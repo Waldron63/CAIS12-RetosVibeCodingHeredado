@@ -68,6 +68,7 @@ catalog:
 
 autoInstallPeers: false
 
+# pnpm <= 10 reads this list; pnpm >= 11 ignores it and reads `allowBuilds` (below). Keep both.
 onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
@@ -84,3 +85,6 @@ overrides:
   esbuild: "0.28.2"
   # orval pins js-yaml to an exact version older than the CVE fix (>=4.3.2)
   js-yaml: '4.3.2'
+
+allowBuilds:
+  esbuild: true

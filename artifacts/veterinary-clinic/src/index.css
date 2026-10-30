@@ -231,6 +231,18 @@ button, input, textarea, select { font: inherit; }
 .api-error { background:#fff2ef;border:1px solid #f1d3cc;color:#a4483e;border-radius:10px;padding:11px 13px;font-size:12px;line-height:1.5;margin-bottom:14px; }
 .mobile-nav { display:none; }
 .muted { color:#92a198; }
+.group-label { color:#688072;font-size:11px;font-weight:700; }
+.hint { color:#9aaaa0;font-size:11px;font-weight:500; }
+.owner-rows { display:grid;gap:10px; }
+.owner-row { display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:start;padding:12px;border:1px solid #e4ece6;border-radius:12px;background:#f7faf7; }
+.owner-row .icon-btn { margin-top:22px; }
+.owner-chips { list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px; }
+.owner-chip { display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:5px 10px;background:#edf5ef;color:#3f7457;font-size:11px;font-weight:700;text-decoration:none;transition:background .2s,color .2s; }
+.owner-chip:hover { background:#d9ebdf;color:#2e6c51; }
+.owner-chip small { color:#7f9a8b;font-size:10px;font-weight:600; }
+.co-owners { display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px; }
+.co-owners small { color:#92a197;font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:700; }
+.detail-item .owner-chips { justify-content:flex-end; }
 @media (max-width:1020px) {
   .clinic-sidebar { width:220px; }
   .topbar { padding:0 30px; }
@@ -272,4 +284,9 @@ button, input, textarea, select { font: inherit; }
 @media (max-width:400px) {
   .stats-grid { grid-template-columns:1fr; }
   .stat-card { min-height:94px; }
+}
+@media (max-width:760px) {
+  .owner-row { grid-template-columns:1fr; }
+  .owner-row .icon-btn { margin-top:0; justify-self:end; }
+  .detail-item .owner-chips { justify-content:flex-start; }
 }

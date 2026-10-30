@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OwnerInput } from './ownerInput';
 import type { PatientInputSex } from './patientInputSex';
 
 export interface PatientInput {
@@ -16,8 +17,19 @@ export interface PatientInput {
   /** @minimum 0 */
   age: number;
   sex: PatientInputSex;
-  /** @minLength 1 */
-  ownerName: string;
-  /** @minLength 1 */
-  ownerPhone: string;
+  /**
+     * Owners of the pet. Required unless ownerName and ownerPhone are sent.
+     * @minItems 1
+     */
+  owners?: OwnerInput[];
+  /**
+     * Deprecated: use owners
+     * @minLength 1
+     */
+  ownerName?: string;
+  /**
+     * Deprecated: use owners
+     * @minLength 1
+     */
+  ownerPhone?: string;
 }

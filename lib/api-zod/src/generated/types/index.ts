@@ -7,9 +7,15 @@
  */
 
 export * from './dashboardSummary';
+export * from './exportVisitsCsvParams';
 export * from './healthStatus';
+export * from './listOwnersParams';
 export * from './listPatientsParams';
 export * from './listVisitsParams';
+export * from './owner';
+export * from './ownerDetail';
+export * from './ownerInput';
+export * from './ownerSummary';
 export * from './patient';
 export * from './patientInput';
 export * from './patientInputSex';

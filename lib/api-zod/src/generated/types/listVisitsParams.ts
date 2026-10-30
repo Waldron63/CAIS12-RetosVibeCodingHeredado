@@ -8,4 +8,10 @@
 
 export type ListVisitsParams = {
 patientId?: number;
+/**
+ * Only visits from the last N clinic calendar days (today included)
+ * @minimum 1
+ * @maximum 3650
+ */
+days?: number;
 };

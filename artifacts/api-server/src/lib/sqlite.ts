@@ -40,7 +40,39 @@ database.exec(`
     ON visits(patient_id, visit_date DESC, id DESC);
   CREATE INDEX IF NOT EXISTS visits_date_idx
     ON visits(visit_date DESC, id DESC);
+
+  -- A pet can have several owners and an owner can have several pets.
+  -- patients.owner_name/owner_phone keep the first owner for API compatibility.
+  CREATE TABLE IF NOT EXISTS owners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    phone TEXT NOT NULL CHECK (length(trim(phone)) > 0),
+    name_key TEXT NOT NULL,
+    phone_key TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE (name_key, phone_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS patient_owners (
+    patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+    owner_id INTEGER NOT NULL REFERENCES owners(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (patient_id, owner_id)
+  );
+  CREATE INDEX IF NOT EXISTS patient_owners_owner_idx
+    ON patient_owners(owner_id);
+
+  -- Visits used to store only a UTC date; keep those days as midday on the clinic's clock.
+  UPDATE visits
+     SET visit_date = visit_date || 'T17:00:00.000Z'
+   WHERE length(visit_date) = 10;
 `);
+
+export type OwnerRow = {
+  id: number;
+  name: string;
+  phone: string;
+};
 
 export type PatientRow = {
   id: number;
@@ -54,6 +86,8 @@ export type PatientRow = {
   createdAt: string;
 };
 
+export type PatientWithOwners = PatientRow & { owners: OwnerRow[] };
+
 export type VisitRow = {
   id: number;
   patientId: number;
@@ -66,6 +100,8 @@ export type VisitRow = {
   observations: string;
   createdAt: string;
 };
+
+export type VisitWithOwners = VisitRow & { ownerNames: string };
 
 export type RecentVisitRow = Pick<
   VisitRow,
@@ -100,4 +136,16 @@ export function insert(
 ): number {
   const result = database.prepare(sql).run(...parameters);
   return Number(result.lastInsertRowid);
+}
+
+export function transaction<T>(work: () => T): T {
+  database.exec("BEGIN");
+  try {
+    const result = work();
+    database.exec("COMMIT");
+    return result;
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }

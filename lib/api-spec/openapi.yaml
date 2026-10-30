@@ -16,6 +16,8 @@ tags:
     description: Medical visits
   - name: dashboard
     description: Clinic overview
+  - name: owners
+    description: Pet owners (responsables)
 paths:
   /healthz:
     get:
@@ -164,6 +166,14 @@ paths:
           required: false
           schema:
             type: integer
+        - name: days
+          in: query
+          required: false
+          description: Only visits from the last N clinic calendar days (today included)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3650
       responses:
         "200":
           description: Visit list ordered from newest to oldest
@@ -194,6 +204,30 @@ paths:
           description: Invalid visit data
         "404":
           description: Patient not found
+  /visits/export:
+    get:
+      operationId: exportVisitsCsv
+      tags: [visits]
+      summary: Export recent visits as CSV (pet, owner, date and reason)
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: Last N clinic calendar days (today included). Defaults to 30.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3650
+            default: 30
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Invalid parameters
   /visits/{id}:
     parameters:
       - name: id
@@ -244,6 +278,46 @@ paths:
           description: Visit deleted
         "404":
           description: Visit not found
+  /owners:
+    get:
+      operationId: listOwners
+      tags: [owners]
+      summary: List owners with the pets they are responsible for
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OwnerSummary"
+  /owners/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getOwner
+      tags: [owners]
+      summary: Get an owner and all of their pets
+      responses:
+        "200":
+          description: Owner details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerDetail"
+        "404":
+          description: Owner not found
 components:
   schemas:
     HealthStatus:
@@ -262,10 +336,14 @@ components:
         breed: { type: string }
         age: { type: integer, minimum: 0 }
         sex: { type: string, enum: [female, male] }
-        ownerName: { type: string }
-        ownerPhone: { type: string }
+        ownerName: { type: string, description: First owner (kept for compatibility) }
+        ownerPhone: { type: string, description: Phone of the first owner (kept for compatibility) }
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/Owner"
         createdAt: { type: string, format: date-time }
-      required: [id, name, species, breed, age, sex, ownerName, ownerPhone, createdAt]
+      required: [id, name, species, breed, age, sex, ownerName, ownerPhone, owners, createdAt]
     PatientInput:
       type: object
       properties:
@@ -274,9 +352,15 @@ components:
         breed: { type: string }
         age: { type: integer, minimum: 0 }
         sex: { type: string, enum: [female, male] }
-        ownerName: { type: string, minLength: 1 }
-        ownerPhone: { type: string, minLength: 1 }
-      required: [name, species, breed, age, sex, ownerName, ownerPhone]
+        owners:
+          type: array
+          minItems: 1
+          description: Owners of the pet. Required unless ownerName and ownerPhone are sent.
+          items:
+            $ref: "#/components/schemas/OwnerInput"
+        ownerName: { type: string, minLength: 1, description: "Deprecated: use owners" }
+        ownerPhone: { type: string, minLength: 1, description: "Deprecated: use owners" }
+      required: [name, species, breed, age, sex]
     Visit:
       type: object
       properties:
@@ -284,18 +368,19 @@ components:
         patientId: { type: integer }
         patientName: { type: string }
         patientSpecies: { type: string }
-        visitDate: { type: string, format: date }
+        visitDate: { type: string, format: date-time }
         reason: { type: string }
         diagnosis: { type: string }
         treatment: { type: string }
         observations: { type: string }
+        ownerNames: { type: string, description: Names of the pet's owners, comma separated }
         createdAt: { type: string, format: date-time }
-      required: [id, patientId, patientName, patientSpecies, visitDate, reason, diagnosis, treatment, observations, createdAt]
+      required: [id, patientId, patientName, patientSpecies, visitDate, reason, diagnosis, treatment, observations, ownerNames, createdAt]
     VisitInput:
       type: object
       properties:
         patientId: { type: integer, minimum: 1 }
-        visitDate: { type: string, format: date }
+        visitDate: { type: string, format: date-time }
         reason: { type: string, minLength: 1 }
         diagnosis: { type: string }
         treatment: { type: string }
@@ -308,9 +393,44 @@ components:
         patientId: { type: integer }
         patientName: { type: string }
         patientSpecies: { type: string }
-        visitDate: { type: string, format: date }
+        visitDate: { type: string, format: date-time }
         reason: { type: string }
       required: [id, patientId, patientName, patientSpecies, visitDate, reason]
+    Owner:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        phone: { type: string }
+      required: [id, name, phone]
+    OwnerInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        phone: { type: string, minLength: 1 }
+      required: [name, phone]
+    OwnerSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        phone: { type: string }
+        patientCount: { type: integer }
+        patientNames:
+          type: array
+          items: { type: string }
+      required: [id, name, phone, patientCount, patientNames]
+    OwnerDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        phone: { type: string }
+        patients:
+          type: array
+          items:
+            $ref: "#/components/schemas/Patient"
+      required: [id, name, phone, patients]
     DashboardSummary:
       type: object
       properties:

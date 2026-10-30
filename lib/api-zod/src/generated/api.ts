@@ -53,8 +53,13 @@ export const ListPatientsResponseItem = zod.object({
   "breed": zod.string(),
   "age": zod.number().int().min(listPatientsResponseAgeMin),
   "sex": zod.enum(['female', 'male']),
-  "ownerName": zod.string(),
-  "ownerPhone": zod.string(),
+  "ownerName": zod.string().describe('First owner (kept for compatibility)'),
+  "ownerPhone": zod.string().describe('Phone of the first owner (kept for compatibility)'),
+  "owners": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "phone": zod.string()
+})),
   "createdAt": zod.coerce.date()
 })
 export const ListPatientsResponse = zod.array(ListPatientsResponseItem)
@@ -71,14 +76,21 @@ export const createPatientBodyAgeMin = 0;
 
 
 
+
+
+
 export const CreatePatientBody = zod.object({
   "name": zod.string().min(1),
   "species": zod.string().min(1),
   "breed": zod.string(),
   "age": zod.number().int().min(createPatientBodyAgeMin),
   "sex": zod.enum(['female', 'male']),
-  "ownerName": zod.string().min(1),
-  "ownerPhone": zod.string().min(1)
+  "owners": zod.array(zod.object({
+  "name": zod.string().min(1),
+  "phone": zod.string().min(1)
+})).min(1).optional().describe('Owners of the pet. Required unless ownerName and ownerPhone are sent.'),
+  "ownerName": zod.string().min(1).optional().describe('Deprecated: use owners'),
+  "ownerPhone": zod.string().min(1).optional().describe('Deprecated: use owners')
 })
 
 export const createPatientResponseAgeMin = 0;
@@ -92,8 +104,13 @@ export const CreatePatientResponse = zod.object({
   "breed": zod.string(),
   "age": zod.number().int().min(createPatientResponseAgeMin),
   "sex": zod.enum(['female', 'male']),
-  "ownerName": zod.string(),
-  "ownerPhone": zod.string(),
+  "ownerName": zod.string().describe('First owner (kept for compatibility)'),
+  "ownerPhone": zod.string().describe('Phone of the first owner (kept for compatibility)'),
+  "owners": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "phone": zod.string()
+})),
   "createdAt": zod.coerce.date()
 })
 
@@ -116,8 +133,13 @@ export const GetPatientResponse = zod.object({
   "breed": zod.string(),
   "age": zod.number().int().min(getPatientResponseAgeMin),
   "sex": zod.enum(['female', 'male']),
-  "ownerName": zod.string(),
-  "ownerPhone": zod.string(),
+  "ownerName": zod.string().describe('First owner (kept for compatibility)'),
+  "ownerPhone": zod.string().describe('Phone of the first owner (kept for compatibility)'),
+  "owners": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "phone": zod.string()
+})),
   "createdAt": zod.coerce.date()
 })
 
@@ -137,14 +159,21 @@ export const updatePatientBodyAgeMin = 0;
 
 
 
+
+
+
 export const UpdatePatientBody = zod.object({
   "name": zod.string().min(1),
   "species": zod.string().min(1),
   "breed": zod.string(),
   "age": zod.number().int().min(updatePatientBodyAgeMin),
   "sex": zod.enum(['female', 'male']),
-  "ownerName": zod.string().min(1),
-  "ownerPhone": zod.string().min(1)
+  "owners": zod.array(zod.object({
+  "name": zod.string().min(1),
+  "phone": zod.string().min(1)
+})).min(1).optional().describe('Owners of the pet. Required unless ownerName and ownerPhone are sent.'),
+  "ownerName": zod.string().min(1).optional().describe('Deprecated: use owners'),
+  "ownerPhone": zod.string().min(1).optional().describe('Deprecated: use owners')
 })
 
 export const updatePatientResponseAgeMin = 0;
@@ -158,8 +187,13 @@ export const UpdatePatientResponse = zod.object({
   "breed": zod.string(),
   "age": zod.number().int().min(updatePatientResponseAgeMin),
   "sex": zod.enum(['female', 'male']),
-  "ownerName": zod.string(),
-  "ownerPhone": zod.string(),
+  "ownerName": zod.string().describe('First owner (kept for compatibility)'),
+  "ownerPhone": zod.string().describe('Phone of the first owner (kept for compatibility)'),
+  "owners": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "phone": zod.string()
+})),
   "createdAt": zod.coerce.date()
 })
 
@@ -191,6 +225,7 @@ export const ListPatientVisitsResponseItem = zod.object({
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "observations": zod.string(),
+  "ownerNames": zod.string().describe('Names of the pet\'s owners'),
   "createdAt": zod.coerce.date()
 })
 export const ListPatientVisitsResponse = zod.array(ListPatientVisitsResponseItem)
@@ -199,8 +234,13 @@ export const ListPatientVisitsResponse = zod.array(ListPatientVisitsResponseItem
 /**
  * @summary List medical visits
  */
+export const listVisitsQueryDaysMax = 3650;
+
+
+
 export const ListVisitsQueryParams = zod.object({
-  "patientId": zod.coerce.number().int().optional()
+  "patientId": zod.coerce.number().int().optional(),
+  "days": zod.coerce.number().int().min(1).max(listVisitsQueryDaysMax).optional().describe('Only visits from the last N clinic calendar days (today included)')
 })
 
 export const ListVisitsResponseItem = zod.object({
@@ -213,6 +253,7 @@ export const ListVisitsResponseItem = zod.object({
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "observations": zod.string(),
+  "ownerNames": zod.string().describe('Names of the pet\'s owners'),
   "createdAt": zod.coerce.date()
 })
 export const ListVisitsResponse = zod.array(ListVisitsResponseItem)
@@ -244,8 +285,24 @@ export const CreateVisitResponse = zod.object({
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "observations": zod.string(),
+  "ownerNames": zod.string().describe('Names of the pet\'s owners'),
   "createdAt": zod.coerce.date()
 })
+
+
+/**
+ * @summary Export recent visits as CSV (pet, owner, date and reason)
+ */
+export const exportVisitsCsvQueryDaysDefault = 30;
+export const exportVisitsCsvQueryDaysMax = 3650;
+
+
+
+export const ExportVisitsCsvQueryParams = zod.object({
+  "days": zod.coerce.number().int().min(1).max(exportVisitsCsvQueryDaysMax).default(exportVisitsCsvQueryDaysDefault).describe('Last N clinic calendar days (today included). Defaults to 30.')
+})
+
+export const ExportVisitsCsvResponse = zod.unknown()
 
 
 /**
@@ -265,6 +322,7 @@ export const GetVisitResponse = zod.object({
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "observations": zod.string(),
+  "ownerNames": zod.string().describe('Names of the pet\'s owners'),
   "createdAt": zod.coerce.date()
 })
 
@@ -299,6 +357,7 @@ export const UpdateVisitResponse = zod.object({
   "diagnosis": zod.string(),
   "treatment": zod.string(),
   "observations": zod.string(),
+  "ownerNames": zod.string().describe('Names of the pet\'s owners'),
   "createdAt": zod.coerce.date()
 })
 
@@ -311,5 +370,56 @@ export const DeleteVisitParams = zod.object({
 })
 
 export const DeleteVisitResponse = zod.void()
+
+
+/**
+ * @summary List owners with the pets they are responsible for
+ */
+export const ListOwnersQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListOwnersResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "phone": zod.string(),
+  "patientCount": zod.number().int(),
+  "patientNames": zod.array(zod.string())
+})
+export const ListOwnersResponse = zod.array(ListOwnersResponseItem)
+
+
+/**
+ * @summary Get an owner and all of their pets
+ */
+export const GetOwnerParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const getOwnerResponsePatientsItemAgeMin = 0;
+
+
+
+export const GetOwnerResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "phone": zod.string(),
+  "patients": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "species": zod.string(),
+  "breed": zod.string(),
+  "age": zod.number().int().min(getOwnerResponsePatientsItemAgeMin),
+  "sex": zod.enum(['female', 'male']),
+  "ownerName": zod.string().describe('First owner (kept for compatibility)'),
+  "ownerPhone": zod.string().describe('Phone of the first owner (kept for compatibility)'),
+  "owners": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "phone": zod.string()
+})),
+  "createdAt": zod.coerce.date()
+}))
+})
 
 

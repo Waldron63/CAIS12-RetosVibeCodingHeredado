@@ -17,6 +17,12 @@ export const PatientSex = {
   male: 'male',
 } as const;
 
+export interface Owner {
+  id: number;
+  name: string;
+  phone: string;
+}
+
 export interface Patient {
   id: number;
   name: string;
@@ -25,8 +31,11 @@ export interface Patient {
   /** @minimum 0 */
   age: number;
   sex: PatientSex;
+  /** First owner (kept for compatibility) */
   ownerName: string;
+  /** Phone of the first owner (kept for compatibility) */
   ownerPhone: string;
+  owners: Owner[];
   createdAt: string;
 }
 
@@ -38,6 +47,13 @@ export const PatientInputSex = {
   male: 'male',
 } as const;
 
+export interface OwnerInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  phone: string;
+}
+
 export interface PatientInput {
   /** @minLength 1 */
   name: string;
@@ -47,10 +63,21 @@ export interface PatientInput {
   /** @minimum 0 */
   age: number;
   sex: PatientInputSex;
-  /** @minLength 1 */
-  ownerName: string;
-  /** @minLength 1 */
-  ownerPhone: string;
+  /**
+     * Owners of the pet. Required unless ownerName and ownerPhone are sent.
+     * @minItems 1
+     */
+  owners?: OwnerInput[];
+  /**
+     * Deprecated: use owners
+     * @minLength 1
+     */
+  ownerName?: string;
+  /**
+     * Deprecated: use owners
+     * @minLength 1
+     */
+  ownerPhone?: string;
 }
 
 export interface Visit {
@@ -63,6 +90,8 @@ export interface Visit {
   diagnosis: string;
   treatment: string;
   observations: string;
+  /** Names of the pet's owners */
+  ownerNames: string;
   createdAt: string;
 }
 
@@ -86,6 +115,21 @@ export interface RecentVisit {
   reason: string;
 }
 
+export interface OwnerSummary {
+  id: number;
+  name: string;
+  phone: string;
+  patientCount: number;
+  patientNames: string[];
+}
+
+export interface OwnerDetail {
+  id: number;
+  name: string;
+  phone: string;
+  patients: Patient[];
+}
+
 export interface DashboardSummary {
   totalPatients: number;
   totalVisits: number;
@@ -99,5 +143,24 @@ q?: string;
 
 export type ListVisitsParams = {
 patientId?: number;
+/**
+ * Only visits from the last N clinic calendar days (today included)
+ * @minimum 1
+ * @maximum 3650
+ */
+days?: number;
+};
+
+export type ExportVisitsCsvParams = {
+/**
+ * Last N clinic calendar days (today included). Defaults to 30.
+ * @minimum 1
+ * @maximum 3650
+ */
+days?: number;
+};
+
+export type ListOwnersParams = {
+q?: string;
 };
 

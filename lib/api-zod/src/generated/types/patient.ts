@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Owner } from './owner';
 import type { PatientSex } from './patientSex';
 
 export interface Patient {
@@ -15,7 +16,10 @@ export interface Patient {
   /** @minimum 0 */
   age: number;
   sex: PatientSex;
+  /** First owner (kept for compatibility) */
   ownerName: string;
+  /** Phone of the first owner (kept for compatibility) */
   ownerPhone: string;
+  owners: Owner[];
   createdAt: Date;
 }

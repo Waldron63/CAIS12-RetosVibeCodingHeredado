@@ -1,12 +1,12 @@
-import { type ButtonHTMLAttributes, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import {
-  Activity, ArrowLeft, ArrowRight, CalendarDays, Cat, ChevronRight,
-  ClipboardPlus, Dog, HeartPulse, Home, PawPrint, Pencil, Phone, Plus, Search,
-  ShieldCheck, Stethoscope, Trash2, UserRound,
+  ArrowLeft, ArrowRight, CalendarClock, CalendarDays, ChevronRight,
+  ClipboardPlus, HeartPulse, Home, PawPrint, Pencil, Phone, Plus, Search,
+  ShieldCheck, Stethoscope, Trash2, UserRound, UsersRound,
   X,
 } from 'lucide-react';
 import {
@@ -18,7 +18,11 @@ import {
   useUpdatePatient, useUpdateVisit,
 } from '@workspace/api-client-react';
 import type { Patient, PatientInput, Visit, VisitInput } from '@workspace/api-client-react';
+import { Button, DetailItem, EmptyState, LoadingRows, PageHeading, QueryError, SpeciesIcon, errorText, formatDate } from '@/components/clinic-ui';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { OwnerLinks } from '@/components/owner-links';
+import { OwnerDetailPage, OwnersPage } from '@/pages/owners';
+import { RecentVisitsPage } from '@/pages/recent-visits';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -27,14 +31,24 @@ import { Form } from '@/components/ui/form';
 
 const queryClient = new QueryClient();
 
+const ownerSchema = z.object({
+  name: z.string().trim().min(1, 'Escribe el nombre del responsable.'),
+  phone: z.string().trim().min(1, 'Escribe un teléfono de contacto.'),
+});
+
+// Same rule as the API: equal name and phone digits are the same person.
+const ownerKey = (owner: { name: string; phone: string }) =>
+  `${owner.name.trim().replace(/\s+/g, ' ').toLowerCase()}|${owner.phone.replace(/\D/g, '')}`;
+
 const patientSchema = z.object({
   name: z.string().trim().min(1, 'Escribe el nombre de la mascota.'),
   species: z.string().trim().min(1, 'Indica la especie.'),
   breed: z.string().trim(),
-  age: z.number({ invalid_type_error: 'Indica una edad válida.' }).min(0, 'La edad no puede ser negativa.'),
+  age: z.number({ invalid_type_error: 'Indica una edad válida.' }).int('La edad debe ser un número entero de años.').min(0, 'La edad no puede ser negativa.'),
   sex: z.enum(['female', 'male'], { required_error: 'Selecciona el sexo.' }),
-  ownerName: z.string().trim().min(1, 'Escribe el nombre de la persona responsable.'),
-  ownerPhone: z.string().trim().min(1, 'Escribe un teléfono de contacto.'),
+  owners: z.array(ownerSchema)
+    .min(1, 'Registra al menos un responsable.')
+    .refine((owners) => new Set(owners.map(ownerKey)).size === owners.length, 'No repitas al mismo responsable en una misma mascota.'),
 });
 type PatientFields = z.infer<typeof patientSchema>;
 
@@ -47,18 +61,6 @@ const visitSchema = z.object({
   observations: z.string().trim(),
 });
 type VisitFields = z.infer<typeof visitSchema>;
-
-function errorText(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  return 'No se pudo completar la solicitud. Inténtalo de nuevo.';
-}
-
-function formatDate(value?: string, options?: Intl.DateTimeFormatOptions) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('es', options ?? { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
-}
 
 function localDateTime(value?: string) {
   if (!value) return '';
@@ -75,16 +77,6 @@ function dateParts(value: string) {
     day: new Intl.DateTimeFormat('es', { day: '2-digit' }).format(date),
     month: new Intl.DateTimeFormat('es', { month: 'short' }).format(date).replace('.', ''),
   };
-}
-
-function SpeciesIcon({ species, size = 17 }: { species: string; size?: number }) {
-  const lower = species.toLowerCase();
-  return lower.includes('gato') || lower.includes('felin') ?
-    <Cat size={size} strokeWidth={1.8} /> : <Dog size={size} strokeWidth={1.8} />;
-}
-
-function Button({ children, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button className={`btn ${className}`} {...props}>{children}</button>;
 }
 
 function Modal({ title, subtitle, onClose, children }: {
@@ -135,9 +127,14 @@ function PatientEditor({ patient, onClose }: { patient?: Patient; onClose: () =>
     resolver: zodResolver(patientSchema),
     defaultValues: patient ? {
       name: patient.name, species: patient.species, breed: patient.breed,
-      age: patient.age, sex: patient.sex, ownerName: patient.ownerName, ownerPhone: patient.ownerPhone,
-    } : { name: '', species: '', breed: '', age: 0, sex: 'female', ownerName: '', ownerPhone: '' },
+      age: patient.age, sex: patient.sex,
+      owners: patient.owners.length > 0
+        ? patient.owners.map(({ name, phone }) => ({ name, phone }))
+        : [{ name: patient.ownerName, phone: patient.ownerPhone }],
+    } : { name: '', species: '', breed: '', age: 0, sex: 'female', owners: [{ name: '', phone: '' }] },
   });
+  const ownerFields = useFieldArray({ control: form.control, name: 'owners' });
+  const ownersError = form.formState.errors.owners?.root?.message ?? form.formState.errors.owners?.message;
   const mutationError = editing ? updatePatient.error : createPatient.error;
   const pending = editing ? updatePatient.isPending : createPatient.isPending;
 
@@ -164,10 +161,23 @@ function PatientEditor({ patient, onClose }: { patient?: Patient; onClose: () =>
             <div className="form-field"><label htmlFor="patient-name">Nombre de la mascota *</label><input id="patient-name" className="field-input" placeholder="Nombre" data-testid="input-patient-name" {...form.register('name')} /><FieldError>{form.formState.errors.name?.message}</FieldError></div>
             <div className="form-field"><label htmlFor="patient-species">Especie *</label><input id="patient-species" className="field-input" placeholder="Perro, gato…" data-testid="input-patient-species" {...form.register('species')} /><FieldError>{form.formState.errors.species?.message}</FieldError></div>
             <div className="form-field"><label htmlFor="patient-breed">Raza</label><input id="patient-breed" className="field-input" placeholder="Raza o mestizo" data-testid="input-patient-breed" {...form.register('breed')} /><FieldError>{form.formState.errors.breed?.message}</FieldError></div>
-            <div className="form-field"><label htmlFor="patient-age">Edad (años) *</label><input id="patient-age" className="field-input" type="number" min="0" step="0.1" data-testid="input-patient-age" {...form.register('age', { valueAsNumber: true })} /><FieldError>{form.formState.errors.age?.message}</FieldError></div>
+            <div className="form-field"><label htmlFor="patient-age">Edad (años) *</label><input id="patient-age" className="field-input" type="number" min="0" step="1" data-testid="input-patient-age" {...form.register('age', { valueAsNumber: true })} /><FieldError>{form.formState.errors.age?.message}</FieldError></div>
             <div className="form-field"><label htmlFor="patient-sex">Sexo *</label><select id="patient-sex" className="field-select" data-testid="select-patient-sex" {...form.register('sex')}><option value="female">Hembra</option><option value="male">Macho</option></select><FieldError>{form.formState.errors.sex?.message}</FieldError></div>
-            <div className="form-field"><label htmlFor="owner-name">Persona responsable *</label><input id="owner-name" className="field-input" placeholder="Nombre y apellido" data-testid="input-owner-name" {...form.register('ownerName')} /><FieldError>{form.formState.errors.ownerName?.message}</FieldError></div>
-            <div className="form-field full"><label htmlFor="owner-phone">Teléfono de contacto *</label><input id="owner-phone" className="field-input" type="tel" placeholder="Teléfono" data-testid="input-owner-phone" {...form.register('ownerPhone')} /><FieldError>{form.formState.errors.ownerPhone?.message}</FieldError></div>
+            <div className="form-field full" data-testid="owners-fieldset">
+              <span className="group-label">Responsables * <span className="hint">(una mascota puede tener más de uno)</span></span>
+              <div className="owner-rows">
+                {ownerFields.fields.map((field, index) => (
+                  <div className="owner-row" key={field.id} data-testid={`owner-row-${index}`}>
+                    <div className="form-field"><label htmlFor={`owner-name-${index}`}>Nombre del responsable {index + 1}</label><input id={`owner-name-${index}`} className="field-input" placeholder="Nombre y apellido" data-testid={`input-owner-name-${index}`} {...form.register(`owners.${index}.name`)} /><FieldError>{form.formState.errors.owners?.[index]?.name?.message}</FieldError></div>
+                    <div className="form-field"><label htmlFor={`owner-phone-${index}`}>Teléfono del responsable {index + 1}</label><input id={`owner-phone-${index}`} className="field-input" type="tel" placeholder="Teléfono" data-testid={`input-owner-phone-${index}`} {...form.register(`owners.${index}.phone`)} /><FieldError>{form.formState.errors.owners?.[index]?.phone?.message}</FieldError></div>
+                    {ownerFields.fields.length > 1 && <button type="button" className="icon-btn danger" onClick={() => ownerFields.remove(index)} aria-label={`Quitar responsable ${index + 1}`} data-testid={`button-remove-owner-${index}`}><Trash2 size={14} /></button>}
+                  </div>
+                ))}
+              </div>
+              <FieldError>{ownersError}</FieldError>
+              <div><Button type="button" className="btn-secondary" onClick={() => ownerFields.append({ name: '', phone: '' })} data-testid="button-add-owner"><Plus size={14} />Agregar otro responsable</Button></div>
+              <span className="hint">Si el nombre y el teléfono coinciden con un responsable ya registrado, se enlaza a esa misma persona.</span>
+            </div>
           </div>
           <div className="modal-actions"><Button type="button" className="btn-secondary" onClick={onClose}>Cancelar</Button><Button type="submit" className="btn-primary" disabled={pending} data-testid="button-save-patient">{pending ? 'Guardando…' : editing ? 'Guardar cambios' : 'Registrar paciente'}</Button></div>
         </form>
@@ -263,7 +273,9 @@ function Navigation() {
   const links = [
     { href: '/', label: 'Resumen', icon: Home },
     { href: '/patients', label: 'Pacientes', icon: PawPrint },
+    { href: '/owners', label: 'Responsables', icon: UsersRound },
     { href: '/visits', label: 'Consultas', icon: CalendarDays },
+    { href: '/recent', label: 'Últimos 30 días', icon: CalendarClock },
   ];
   const isActive = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
   return (
@@ -291,7 +303,10 @@ function Navigation() {
           <Route path="/" component={DashboardPage} />
           <Route path="/patients" component={PatientsPage} />
           <Route path="/patients/:id" component={PatientDetailPage} />
+          <Route path="/owners" component={OwnersPage} />
+          <Route path="/owners/:id" component={OwnerDetailPage} />
           <Route path="/visits" component={VisitsPage} />
+          <Route path="/recent" component={RecentVisitsPage} />
           <Route component={NotFound} />
         </Switch></RoutedErrorBoundary></main>
       </div>
@@ -302,18 +317,6 @@ function Navigation() {
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
-}
-
-function PageHeading({ eyebrow, title, subtitle, children }: { eyebrow: string; title: string; subtitle: string; children?: ReactNode }) {
-  return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1 className="page-title">{title}</h1><p className="page-subtitle">{subtitle}</p></div>{children}</div>;
-}
-
-function QueryError({ message, retry }: { message: string; retry: () => void }) {
-  return <div className="error-state"><div className="empty-icon"><Activity size={19} /></div><strong>No pudimos cargar la información</strong><p>{message}</p><Button type="button" className="btn-secondary" onClick={retry}>Volver a intentar</Button></div>;
-}
-
-function LoadingRows() {
-  return <div className="loading-state" aria-label="Cargando"><div style={{ display: 'grid', gap: 12, maxWidth: 480, margin: '0 auto' }}>{[0, 1, 2].map((item) => <div key={item} className="skeleton" style={{ height: 44 }} />)}</div></div>;
 }
 
 function DashboardPage() {
@@ -350,10 +353,6 @@ function StatCard({ label, value, icon, testId }: { label: string; value: number
   return <article className="stat-card" data-testid={`stat-${testId}`}><div className="stat-top"><span>{label}</span><span className="stat-icon">{icon}</span></div><div className="stat-value" data-testid={`value-${testId}`}>{value}</div></article>;
 }
 
-function EmptyState({ icon, title, copy, action }: { icon: ReactNode; title: string; copy: string; action?: ReactNode }) {
-  return <div className="empty-state"><div className="empty-icon">{icon}</div><strong>{title}</strong><p>{copy}</p>{action}</div>;
-}
-
 function VisitSummaryRow({ visit }: { visit: { id: number; patientId: number; patientName: string; patientSpecies: string; visitDate: string; reason: string } }) {
   const date = dateParts(visit.visitDate);
   return <div className="visit-row" data-testid={`recent-visit-${visit.id}`}><div className="visit-date-chip"><b>{date.day}</b><small>{date.month}</small></div><div className="visit-row-content"><strong>{visit.patientName}</strong><span>{visit.patientSpecies} · {formatDate(visit.visitDate, { hour: '2-digit', minute: '2-digit' })}</span></div><span className="visit-reason">{visit.reason}</span><Link className="icon-btn" href={`/patients/${visit.patientId}`} aria-label={`Ver ficha de ${visit.patientName}`} data-testid={`link-recent-patient-${visit.id}`}><ChevronRight size={17} /></Link></div>;
@@ -388,7 +387,7 @@ function PatientsPage() {
       {patients.isError ? <div className="panel"><QueryError message={errorText(patients.error)} retry={() => void patients.refetch()} /></div> :
         patients.isLoading ? <div className="panel"><LoadingRows /></div> :
            patientList.length === 0 ? <div className="panel"><EmptyState icon={<PawPrint size={20} />} title={searchText ? 'No encontramos coincidencias' : 'Aún no hay pacientes'} copy={searchText ? 'Prueba con otro nombre de mascota o responsable.' : 'Registra el primer paciente para empezar a construir su historia clínica.'} action={!searchText ? <Button type="button" className="btn-primary" onClick={() => setEditor('new')}><Plus size={15} />Registrar paciente</Button> : undefined} /></div> :
-             <div className="panel table-panel"><table className="data-table"><thead><tr><th>Mascota</th><th>Responsable</th><th>Contacto</th><th>Edad</th><th></th></tr></thead><tbody>{patientList.map((patient) => <tr key={patient.id} data-testid={`row-patient-${patient.id}`}><td><Link href={`/patients/${patient.id}`} style={{ color: 'inherit', textDecoration: 'none' }}><div className="pet-cell"><div className="pet-avatar"><SpeciesIcon species={patient.species} /></div><div><span className="pet-name">{patient.name}</span><span className="pet-meta">{patient.species}{patient.breed ? ` · ${patient.breed}` : ''}</span></div></div></Link></td><td>{patient.ownerName}</td><td><span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><Phone size={13} />{patient.ownerPhone}</span></td><td>{patient.age} {patient.age === 1 ? 'año' : 'años'}</td><td><div className="table-actions"><Link className="icon-btn" href={`/patients/${patient.id}`} aria-label={`Abrir ficha de ${patient.name}`} data-testid={`button-view-patient-${patient.id}`}><ArrowRight size={15} /></Link><button className="icon-btn" onClick={() => setEditor(patient)} aria-label={`Editar ${patient.name}`} data-testid={`button-edit-patient-${patient.id}`}><Pencil size={14} /></button><button className="icon-btn danger" onClick={() => setDeleting(patient)} aria-label={`Eliminar ${patient.name}`} data-testid={`button-delete-patient-${patient.id}`}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div>}
+             <div className="panel table-panel"><table className="data-table"><thead><tr><th>Mascota</th><th>Responsables</th><th>Contacto</th><th>Edad</th><th></th></tr></thead><tbody>{patientList.map((patient) => <tr key={patient.id} data-testid={`row-patient-${patient.id}`}><td><Link href={`/patients/${patient.id}`} style={{ color: 'inherit', textDecoration: 'none' }}><div className="pet-cell"><div className="pet-avatar"><SpeciesIcon species={patient.species} /></div><div><span className="pet-name">{patient.name}</span><span className="pet-meta">{patient.species}{patient.breed ? ` · ${patient.breed}` : ''}</span></div></div></Link></td><td><OwnerLinks owners={patient.owners} testIdPrefix={`link-patient-${patient.id}-owner`} /></td><td>{patient.owners.map((owner) => <span key={owner.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Phone size={13} />{owner.phone}</span>)}</td><td>{patient.age} {patient.age === 1 ? 'año' : 'años'}</td><td><div className="table-actions"><Link className="icon-btn" href={`/patients/${patient.id}`} aria-label={`Abrir ficha de ${patient.name}`} data-testid={`button-view-patient-${patient.id}`}><ArrowRight size={15} /></Link><button className="icon-btn" onClick={() => setEditor(patient)} aria-label={`Editar ${patient.name}`} data-testid={`button-edit-patient-${patient.id}`}><Pencil size={14} /></button><button className="icon-btn danger" onClick={() => setDeleting(patient)} aria-label={`Eliminar ${patient.name}`} data-testid={`button-delete-patient-${patient.id}`}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div>}
       {editor && <PatientEditor patient={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)} />}
       {deleting && <ConfirmDialog title={`Eliminar a ${deleting.name}`} message={`Vas a eliminar la ficha de ${deleting.name} y todo su historial de consultas. Esta eliminación es permanente y no se podrá recuperar.`} pending={deletePatient.isPending} error={deletePatient.error} onCancel={() => setDeleting(null)} onConfirm={confirmDelete} />}
       {deletePatient.error && !deleting && <div className="api-error" role="alert" style={{ marginTop: 16 }}>{errorText(deletePatient.error)}</div>}
@@ -432,7 +431,7 @@ function PatientDetailPage() {
       <Link href="/patients" className="text-link" style={{ marginBottom: 16 }} data-testid="link-back-patients"><ArrowLeft size={14} />Volver a pacientes</Link>
       <section className="patient-hero"><div className="pet-avatar"><SpeciesIcon species={patient.species} size={25} /></div><div><h2>{patient.name}</h2><p>{patient.species}{patient.breed ? ` · ${patient.breed}` : ''} · {patient.sex === 'female' ? 'Hembra' : 'Macho'}</p></div><div className="patient-hero-actions"><Button type="button" className="btn-secondary" onClick={() => setEditorOpen(true)} data-testid="button-edit-patient-detail"><Pencil size={14} />Editar</Button><Button type="button" className="btn-primary" onClick={() => setVisitOpen(true)} data-testid="button-add-visit-detail"><Plus size={15} />Consulta</Button><button className="icon-btn danger" onClick={() => setConfirmOpen(true)} aria-label="Eliminar paciente" data-testid="button-delete-patient-detail"><Trash2 size={15} /></button></div></section>
       <section className="detail-grid">
-        <div className="panel"><div className="panel-heading"><div><h2 className="panel-title">Datos del paciente</h2><p className="panel-caption">Ficha de identificación y contacto</p></div><UserRound size={17} className="muted" /></div><div className="detail-list"><DetailItem label="Responsable" value={patient.ownerName} /><DetailItem label="Teléfono" value={patient.ownerPhone} /><DetailItem label="Edad" value={`${patient.age} ${patient.age === 1 ? 'año' : 'años'}`} /><DetailItem label="Sexo" value={patient.sex === 'female' ? 'Hembra' : 'Macho'} /><DetailItem label="En la clínica desde" value={formatDate(patient.createdAt)} /></div></div>
+        <div className="panel"><div className="panel-heading"><div><h2 className="panel-title">Datos del paciente</h2><p className="panel-caption">Ficha de identificación y contacto</p></div><UserRound size={17} className="muted" /></div><div className="detail-list"><div className="detail-item" data-testid="patient-owners"><span>{patient.owners.length === 1 ? 'Responsable' : 'Responsables'}</span><OwnerLinks owners={patient.owners} showPhone testIdPrefix="link-patient-detail-owner" /></div><DetailItem label="Edad" value={`${patient.age} ${patient.age === 1 ? 'año' : 'años'}`} /><DetailItem label="Sexo" value={patient.sex === 'female' ? 'Hembra' : 'Macho'} /><DetailItem label="En la clínica desde" value={formatDate(patient.createdAt)} /></div></div>
         <div className="panel"><div className="panel-heading"><div><h2 className="panel-title">Historial médico</h2><p className="panel-caption">Registro cronológico de consultas y cuidados</p></div><span className="tag">{history.data?.length ?? '—'} consultas</span></div>
           {history.isLoading ? <LoadingRows /> : history.isError ? <QueryError message={errorText(history.error)} retry={() => void history.refetch()} /> : history.data?.length ? <div className="timeline">{[...history.data].sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()).map((visit) => <div className="timeline-entry" key={visit.id} data-testid={`history-entry-${visit.id}`}><span className="timeline-date">{formatDate(visit.visitDate, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span><h4>{visit.reason}</h4><p>{visit.diagnosis || visit.treatment || visit.observations || 'Sin notas adicionales registradas.'}</p>{visit.treatment && <p style={{ marginTop: 5 }}><strong style={{ color: '#668875' }}>Tratamiento:</strong> {visit.treatment}</p>}</div>)}</div> : <EmptyState icon={<HeartPulse size={19} />} title="Aún no hay consultas" copy="El historial se irá construyendo con cada visita médica." action={<Button type="button" className="btn-secondary" onClick={() => setVisitOpen(true)}><Plus size={14} />Registrar consulta</Button>} />}
         </div>
@@ -443,10 +442,6 @@ function PatientDetailPage() {
       {deletePatient.error && !confirmOpen && <div className="api-error" style={{ marginTop: 16 }} role="alert">{errorText(deletePatient.error)}</div>}
     </div>
   );
-}
-
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return <div className="detail-item"><span>{label}</span><span>{value}</span></div>;
 }
 
 function VisitsPage() {

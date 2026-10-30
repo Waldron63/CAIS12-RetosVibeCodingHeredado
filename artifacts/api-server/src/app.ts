@@ -3,6 +3,9 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { migrateLegacyOwners } from "./lib/owners";
+
+migrateLegacyOwners();
 
 const app: Express = express();
 

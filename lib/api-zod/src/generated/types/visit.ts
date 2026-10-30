@@ -16,5 +16,7 @@ export interface Visit {
   diagnosis: string;
   treatment: string;
   observations: string;
+  /** Names of the pet's owners */
+  ownerNames: string;
   createdAt: Date;
 }

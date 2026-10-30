@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { GetDashboardSummaryResponse } from "@workspace/api-zod";
+import { lastDaysWindow } from "../lib/clinic-time";
 import {
   queryAll,
   queryOne,
@@ -9,6 +10,8 @@ import {
 const router: IRouter = Router();
 
 router.get("/dashboard", (_req, res): void => {
+  // "Today" is the clinic's calendar day (America/Bogota).
+  const today = lastDaysWindow(1);
   const totals = queryOne<{
     totalPatients: number;
     totalVisits: number;
@@ -17,13 +20,8 @@ router.get("/dashboard", (_req, res): void => {
     SELECT
       (SELECT COUNT(*) FROM patients) AS totalPatients,
       (SELECT COUNT(*) FROM visits) AS totalVisits,
-      (SELECT COUNT(*) FROM visits WHERE visit_date = ?) AS visitsToday
-  `, new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Bogota",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date()));
+      (SELECT COUNT(*) FROM visits WHERE visit_date >= ? AND visit_date < ?) AS visitsToday
+  `, today.from.toISOString(), today.to.toISOString());
 
   const recentVisits = queryAll<RecentVisitRow>(`
     SELECT
